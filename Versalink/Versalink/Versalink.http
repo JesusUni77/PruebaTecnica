@@ -1,0 +1,6 @@
+@Versalink_HostAddress = http://localhost:5183
+
+GET {{Versalink_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
