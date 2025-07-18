@@ -79,30 +79,36 @@ namespace Versalink.Controllers.API
 
                int filasAfectadas = await command.ExecuteNonQueryAsync(); // Solo una vez
                using var getIdCmd = new SqliteCommand("SELECT last_insert_rowid();", connection);
+               /*
+                  Aqui pase investigando como agarraba el id del cliente que se acababa de agregar, es la unica forma que se me vino para poder obtener el id del cliente y asi relacionarlos con las cuentas que llegara a tener
+               */
                var clienteID = (long)await getIdCmd.ExecuteScalarAsync();  
 
                //int filasAfectadas = await command.ExecuteNonQueryAsync();
                if (filasAfectadas > 0)
-               {
+               {  
+                  /*
+                     de todos los incisos a realizar este fue el que mas me costo ya que no conocia la sintaxis, fue uno de los primeros que hice, la logica la tenia clara, solo era poder implementarla. Entonces lo que hice fue recorrer la lista de cuentas del cliente (si en caso se agregaron cuentas).
+                  */
                   if (cliente.cuentas != null && cliente.cuentas.Count > 0)
+               {
+                  foreach (var cuenta in cliente.cuentas)
                   {
-                     foreach (var cuenta in cliente.cuentas)
-                     {
-                        var queryCuenta = @"INSERT INTO Cuenta (numero_cuenta, saldo, ClienteId) 
+                     var queryCuenta = @"INSERT INTO Cuenta (numero_cuenta, saldo, ClienteId) 
                               VALUES (@numero_cuenta, @saldo, @cliente_id)";
-                        //
-                        using var commandCuenta = new SqliteCommand(queryCuenta, connection);
                      //
-                        commandCuenta.Parameters.AddWithValue("@numero_cuenta", cuenta.numero_cuenta);
-                        commandCuenta.Parameters.AddWithValue("@saldo", cuenta.saldo);
-                        commandCuenta.Parameters.AddWithValue("@cliente_id", clienteID);
-                        await commandCuenta.ExecuteNonQueryAsync();
-                     }//
-                        
-                  }
-                     // Cliente agregado correctamente 
-                     Console.WriteLine($"Cliente agregado con ID: {clienteID}");
-                     return Ok(new { mensaje = "Cliente agregado correctamente." });
+                     using var commandCuenta = new SqliteCommand(queryCuenta, connection);
+                     //
+                     commandCuenta.Parameters.AddWithValue("@numero_cuenta", cuenta.numero_cuenta);
+                     commandCuenta.Parameters.AddWithValue("@saldo", cuenta.saldo);
+                     commandCuenta.Parameters.AddWithValue("@cliente_id", clienteID);
+                     await commandCuenta.ExecuteNonQueryAsync();
+                  }//
+
+               }
+                  // Cliente agregado correctamente 
+                  Console.WriteLine($"Cliente agregado con ID: {clienteID}");
+                  return Ok(new { mensaje = "Cliente agregado correctamente." });
                }
                else
                {
@@ -119,32 +125,35 @@ namespace Versalink.Controllers.API
         [HttpGet("saldo/{numeroCuenta}")]
          public async Task<IActionResult> ConsultarSaldo(int numeroCuenta)
          {
+            /*
+               Bueno aqui fue una consulta bien basica, solamente hice un where con el numero de cuenta para obtener el saldo de la cuenta, al final solo era consultar el saldo
+            */
             try
+         {
+            using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var query = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
+            using var command = new SqliteCommand(query, connection);
+            command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
+
+            var result = await command.ExecuteScalarAsync();
+
+            if (result != null)
             {
-               using var connection = new SqliteConnection(_connectionString);
-               await connection.OpenAsync();
-
-               var query = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
-               using var command = new SqliteCommand(query, connection);
-               command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
-
-               var result = await command.ExecuteScalarAsync();
-
-               if (result != null)
-               {
-                     decimal saldo = Convert.ToDecimal(result);
-                     return Ok(new { numero_cuenta = numeroCuenta, saldo });
-               }
-               else
-               {
-                     return NotFound(new { mensaje = "Cuenta no encontrada." });
-               }
+               decimal saldo = Convert.ToDecimal(result);
+               return Ok(new { numero_cuenta = numeroCuenta, saldo });
             }
-            catch (Exception ex)
+            else
             {
-               Console.WriteLine("Error al consultar el saldo.", ex);
-               return StatusCode(500, "Error al consultar el saldo.");
+               return NotFound(new { mensaje = "Cuenta no encontrada." });
             }
+         }
+         catch (Exception ex)
+         {
+            Console.WriteLine("Error al consultar el saldo.", ex);
+            return StatusCode(500, "Error al consultar el saldo.");
+         }
          }
          [HttpPost("transaccion")]
          public async Task<IActionResult> Transaccion([FromBody] Transaccion request) {
@@ -162,6 +171,11 @@ namespace Versalink.Controllers.API
             {
                return NotFound(new { mensaje = "Cuenta no encontrada." });
             }
+            /*
+               Bien esta parte se que es mejorable, pero espero tome en cuenta que nunca habia usado .Net(a como le comente hoy en la entrevista), y estoy aprendiendo con este ejercicio, se que es muy mejorable si.
+
+               Bien entonces lo que hice fue validar mediante if anidados  el monto y el tipo de deposito o retiro, bastante sencillo de entender
+            */
             decimal saldo_actual = Convert.ToDecimal(saldoResult);
             if (request.tipo == "Retiro" && request.monto > saldo_actual)
             {
@@ -183,13 +197,19 @@ namespace Versalink.Controllers.API
             {
                saldo_actual -= request.monto;
             }
+            /*
+               bueno aqui solo hice una peticion a la bd para actualizar el saldo de una cuenta.
+            */
             var updateSaldoQuery = "UPDATE Cuenta SET saldo = @saldo WHERE numero_cuenta = @numeroCuenta";
             using var updateSaldoCmd = new SqliteCommand(updateSaldoQuery, connection);
             updateSaldoCmd.Parameters.AddWithValue("@saldo", saldo_actual);
             updateSaldoCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
             await updateSaldoCmd.ExecuteNonQueryAsync();
 
-
+            /*
+               una vez he actualizado el saldo de la cuenta, lo siguiente
+               que hice fue registrar esa transaccion en la tabla Transaccion, para guardar cuando se hizo, cuanto se hizo y que tipo de transaccion fue
+            */
             var insertTransaccionQuery = @"INSERT INTO Transaccion (fecha, monto, cuenta_id, numero_cuenta, tipo) 
                   VALUES (@fecha, @monto, (SELECT cuenta_id FROM Cuenta WHERE numero_cuenta = @numeroCuenta), @numeroCuenta, @tipo)";
             using var insertTransaccionCmd = new SqliteCommand(insertTransaccionQuery, connection);
@@ -215,8 +235,9 @@ namespace Versalink.Controllers.API
             {
                using var connection = new SqliteConnection(_connectionString);
                await connection.OpenAsync();
-
-               // Obtener todas las transacciones ordenadas por fecha
+               /*
+                  creo que no hace falta explicar aqui, solo es una consulta a la base de datos donde obtengo las transacciones mediante un numero de cuenta
+               */
                var query = @"SELECT transaccion_id, fecha, monto, tipo 
                               FROM Transaccion 
                               WHERE numero_cuenta = @numeroCuenta 
@@ -229,7 +250,6 @@ namespace Versalink.Controllers.API
                var transacciones = new List<object>();
                decimal saldo = 0;
 
-               // Obtener saldo inicial (antes de la primera transacción)
                var saldoInicialQuery = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
                using var saldoCmd = new SqliteCommand(saldoInicialQuery, connection);
                saldoCmd.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
@@ -237,8 +257,6 @@ namespace Versalink.Controllers.API
                if (saldoResult == null)
                      return NotFound(new { mensaje = "Cuenta no encontrada." });
 
-               // Para mostrar el saldo después de cada transacción, reconstruimos el saldo desde el inicio
-               // Primero, obtenemos todas las transacciones y las aplicamos en orden
                var transaccionesTemp = new List<dynamic>();
                while (await reader.ReadAsync())
                {
@@ -250,8 +268,10 @@ namespace Versalink.Controllers.API
                         tipo = reader.GetString(reader.GetOrdinal("tipo"))
                      });
                }
-
-               // Calculamos el saldo después de cada transacción
+               /*
+                para sacar el saldo final solo fui sumando los montos de las transacciones,
+                y de esa manera obtuve el saldo final, y tambien saque el **saldo despues**, este es el saldo que tenia antes de realizar una transaccion nueva
+               */
                decimal saldoActual = 0;
                foreach (var t in transaccionesTemp)
                {
@@ -262,19 +282,17 @@ namespace Versalink.Controllers.API
 
                      transacciones.Add(new
                      {
-                        t.transaccion_id,
-                        t.fecha,
-                        t.tipo,
-                        t.monto,
-                        saldo_despues = saldoActual
+                        t.transaccion_id, t.fecha,
+                        t.tipo, t.monto,
+                        saldo_despues = saldoActual 
                      });
                }
 
                return Ok(new
                {
-                     numero_cuenta = numeroCuenta,
-                     transacciones,
-                     saldo_final = saldoActual
+                  numero_cuenta = numeroCuenta,
+                  transacciones,
+                  saldo_final = saldoActual
                });
             }
             catch (Exception ex)
