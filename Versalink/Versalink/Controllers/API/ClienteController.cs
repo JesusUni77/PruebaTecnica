@@ -207,5 +207,81 @@ namespace Versalink.Controllers.API
             return StatusCode(500, "Error al procesar la transacción.");
          }
          }
+         
+         [HttpGet("transacciones/{numeroCuenta}")]
+         public async Task<IActionResult> ResumenTransacciones(int numeroCuenta)
+         {
+            try
+            {
+               using var connection = new SqliteConnection(_connectionString);
+               await connection.OpenAsync();
+
+               // Obtener todas las transacciones ordenadas por fecha
+               var query = @"SELECT transaccion_id, fecha, monto, tipo 
+                              FROM Transaccion 
+                              WHERE numero_cuenta = @numeroCuenta 
+                              ORDER BY fecha ASC";
+               using var command = new SqliteCommand(query, connection);
+               command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
+
+               using var reader = await command.ExecuteReaderAsync();
+
+               var transacciones = new List<object>();
+               decimal saldo = 0;
+
+               // Obtener saldo inicial (antes de la primera transacción)
+               var saldoInicialQuery = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
+               using var saldoCmd = new SqliteCommand(saldoInicialQuery, connection);
+               saldoCmd.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
+               var saldoResult = await saldoCmd.ExecuteScalarAsync();
+               if (saldoResult == null)
+                     return NotFound(new { mensaje = "Cuenta no encontrada." });
+
+               // Para mostrar el saldo después de cada transacción, reconstruimos el saldo desde el inicio
+               // Primero, obtenemos todas las transacciones y las aplicamos en orden
+               var transaccionesTemp = new List<dynamic>();
+               while (await reader.ReadAsync())
+               {
+                     transaccionesTemp.Add(new
+                     {
+                        transaccion_id = reader.GetInt32(reader.GetOrdinal("transaccion_id")),
+                        fecha = reader.GetDateTime(reader.GetOrdinal("fecha")),
+                        monto = reader.GetDecimal(reader.GetOrdinal("monto")),
+                        tipo = reader.GetString(reader.GetOrdinal("tipo"))
+                     });
+               }
+
+               // Calculamos el saldo después de cada transacción
+               decimal saldoActual = 0;
+               foreach (var t in transaccionesTemp)
+               {
+                     if (t.tipo == "Deposito")
+                        saldoActual += t.monto;
+                     else if (t.tipo == "Retiro")
+                        saldoActual -= t.monto;
+
+                     transacciones.Add(new
+                     {
+                        t.transaccion_id,
+                        t.fecha,
+                        t.tipo,
+                        t.monto,
+                        saldo_despues = saldoActual
+                     });
+               }
+
+               return Ok(new
+               {
+                     numero_cuenta = numeroCuenta,
+                     transacciones,
+                     saldo_final = saldoActual
+               });
+            }
+            catch (Exception ex)
+            {
+               Console.WriteLine("Error al obtener el resumen de transacciones.", ex);
+               return StatusCode(500, "Error al obtener el resumen de transacciones.");
+            }
+         }
     }
 }
