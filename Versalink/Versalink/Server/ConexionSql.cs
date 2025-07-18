@@ -27,27 +27,5 @@ namespace Versalink.Server
         {
             conexion.Close();
         }
-
-        /* public async Task<List<Dictionary<string, object>>> EjecutarConsultaAsync(string query)
-        {
-            var resultados = new List<Dictionary<string, object>>();
-
-            using (var conexion = AbrirConexion())
-            using (var comando = new SqliteCommand(query, conexion))
-            using (var reader = await comando.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                {
-                    var fila = new Dictionary<string, object>();
-                    for (int i = 0; i < reader.FieldCount; i++)
-                    {
-                        fila[reader.GetName(i)] = reader.GetValue(i);
-                    }
-                    resultados.Add(fila);
-                }
-            }
-
-            return resultados;
-        } */
     }
 }
