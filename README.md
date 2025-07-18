@@ -72,3 +72,10 @@ connection.Open();
     }
   ]
 }
+
+{
+  "fecha": "2025-07-18T02:19:57.868Z",
+  "monto": 100,
+  "numero_cuenta": 122,
+  "tipo": "Deposito"
+}

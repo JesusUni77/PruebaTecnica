@@ -24,14 +24,31 @@ namespace Versalink.Controllers.API
             //
             while (await reader.ReadAsync())
             {
-               clientes.Add(new Cliente
+               var cliente = new Cliente
                {
                   cliente_id = reader.GetInt32(reader.GetOrdinal("cliente_id")),
                   nombre = reader.GetString(reader.GetOrdinal("nombre")),
                   fecha_nacimiento = DateTime.Parse(reader.GetString(reader.GetOrdinal("fecha_nacimiento"))),
                   sexo = reader.GetString(reader.GetOrdinal("sexo")),
-                  ingresos = reader.IsDBNull(reader.GetOrdinal("ingresos")) ? null : reader.GetDecimal(reader.GetOrdinal("ingresos"))
-               });
+                  ingresos = reader.IsDBNull(reader.GetOrdinal("ingresos")) ? null : reader.GetDecimal(reader.GetOrdinal("ingresos")),
+                  cuentas = new List<Cuenta>()
+               };
+               var cuentasQuery = "SELECT * FROM Cuenta WHERE ClienteId = @clienteId";
+               using var cuentasCmd = new SqliteCommand(cuentasQuery, connecion);
+               cuentasCmd.Parameters.AddWithValue("@clienteId", cliente.cliente_id);
+               using var cuentasReader = await cuentasCmd.ExecuteReaderAsync();
+               while (await cuentasReader.ReadAsync())
+               {
+                  cliente.cuentas.Add(new Cuenta
+                  {
+                     cuenta_id = cuentasReader.GetInt32(cuentasReader.GetOrdinal("cuenta_id")),
+                     numero_cuenta = cuentasReader.GetInt32(cuentasReader.GetOrdinal("numero_cuenta")),
+                     saldo = cuentasReader.GetDecimal(cuentasReader.GetOrdinal("saldo")),
+                     cliente_id = cuentasReader.GetInt32(cuentasReader.GetOrdinal("ClienteId"))
+                  });
+               }
+
+               clientes.Add(cliente);
             }
             return Ok(clientes);
          }
@@ -99,5 +116,96 @@ namespace Versalink.Controllers.API
             }
             
         }
+        [HttpGet("saldo/{numeroCuenta}")]
+         public async Task<IActionResult> ConsultarSaldo(int numeroCuenta)
+         {
+            try
+            {
+               using var connection = new SqliteConnection(_connectionString);
+               await connection.OpenAsync();
+
+               var query = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
+               using var command = new SqliteCommand(query, connection);
+               command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
+
+               var result = await command.ExecuteScalarAsync();
+
+               if (result != null)
+               {
+                     decimal saldo = Convert.ToDecimal(result);
+                     return Ok(new { numero_cuenta = numeroCuenta, saldo });
+               }
+               else
+               {
+                     return NotFound(new { mensaje = "Cuenta no encontrada." });
+               }
+            }
+            catch (Exception ex)
+            {
+               Console.WriteLine("Error al consultar el saldo.", ex);
+               return StatusCode(500, "Error al consultar el saldo.");
+            }
+         }
+         [HttpPost("transaccion")]
+         public async Task<IActionResult> Transaccion([FromBody] Transaccion request) {
+         try
+         {
+            using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var saldoQuery = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
+            using var saldoCmd = new SqliteCommand(saldoQuery, connection);
+            saldoCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
+            var saldoResult = await saldoCmd.ExecuteScalarAsync();
+
+            if (saldoResult == null)
+            {
+               return NotFound(new { mensaje = "Cuenta no encontrada." });
+            }
+            decimal saldo_actual = Convert.ToDecimal(saldoResult);
+            if (request.tipo == "Retiro" && request.monto > saldo_actual)
+            {
+               return BadRequest(new { mensaje = "Saldo insuficiente para realizar el retiro." });
+            }
+            else if (request.tipo == "Deposito" && request.monto <= 0)
+            {
+               return BadRequest(new { mensaje = "El monto del depósito debe ser mayor a cero." });
+            }
+            else if (request.tipo != "Deposito" && request.tipo != "Retiro")
+            {
+               return BadRequest(new { mensaje = "Tipo de transacción inválido. Debe ser 'Deposito' o 'Retiro'." });
+            }
+            else if (request.tipo == "Deposito")
+            {
+               saldo_actual += request.monto;
+            }
+            else if (request.tipo == "Retiro")
+            {
+               saldo_actual -= request.monto;
+            }
+            var updateSaldoQuery = "UPDATE Cuenta SET saldo = @saldo WHERE numero_cuenta = @numeroCuenta";
+            using var updateSaldoCmd = new SqliteCommand(updateSaldoQuery, connection);
+            updateSaldoCmd.Parameters.AddWithValue("@saldo", saldo_actual);
+            updateSaldoCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
+            await updateSaldoCmd.ExecuteNonQueryAsync();
+
+
+            var insertTransaccionQuery = @"INSERT INTO Transaccion (fecha, monto, cuenta_id, numero_cuenta, tipo) 
+                  VALUES (@fecha, @monto, (SELECT cuenta_id FROM Cuenta WHERE numero_cuenta = @numeroCuenta), @numeroCuenta, @tipo)";
+            using var insertTransaccionCmd = new SqliteCommand(insertTransaccionQuery, connection);
+            insertTransaccionCmd.Parameters.AddWithValue("@fecha", DateTime.Now);
+            insertTransaccionCmd.Parameters.AddWithValue("@monto", request.monto);
+            insertTransaccionCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
+            insertTransaccionCmd.Parameters.AddWithValue("@tipo", request.tipo);
+            await insertTransaccionCmd.ExecuteNonQueryAsync();
+
+            return Ok(new { mensaje = "Transacción procesada con éxito." });
+         }
+         catch (Exception ex)
+         {
+            Console.WriteLine("Error al procesar la transacción.", ex);
+            return StatusCode(500, "Error al procesar la transacción.");
+         }
+         }
     }
 }
