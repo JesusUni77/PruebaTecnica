@@ -59,7 +59,14 @@ namespace Versalink.Controllers.API
          }
 
         }
-        
+
+         private readonly string queryRegistrarCliente = @"
+            INSERT INTO Cliente (nombre, fecha_nacimiento, sexo, ingresos) 
+            VALUES (@nombre, @fecha_nacimiento, @sexo, @ingresos)";
+         private readonly string queryRegistrarCuenta = @"
+            INSERT INTO Cuenta (numero_cuenta, saldo, ClienteId) 
+            VALUES (@numero_cuenta, @saldo, @cliente_id)";
+
         [HttpPost]
         public async Task<IActionResult> AgregarCliente([FromBody] Cliente cliente)
         {
@@ -67,9 +74,8 @@ namespace Versalink.Controllers.API
             {
                using var connection = new SqliteConnection(_connectionString);
                await connection.OpenAsync();
-               var query = @"INSERT INTO Cliente (nombre, fecha_nacimiento, sexo, ingresos) 
-                     VALUES (@nombre, @fecha_nacimiento, @sexo, @ingresos)";
-               using var command = new SqliteCommand(query, connection);
+               
+               using var command = new SqliteCommand(queryRegistrarCliente, connection);
                command.Parameters.AddWithValue("@nombre", cliente.nombre);
                command.Parameters.AddWithValue("@fecha_nacimiento", (object?)cliente.fecha_nacimiento ?? DBNull.Value);
                command.Parameters.AddWithValue("@sexo", cliente.sexo);
@@ -77,7 +83,7 @@ namespace Versalink.Controllers.API
                
                //await command.ExecuteNonQueryAsync();
 
-               int filasAfectadas = await command.ExecuteNonQueryAsync(); // Solo una vez
+               int filasAfectadas = await command.ExecuteNonQueryAsync(); 
                using var getIdCmd = new SqliteCommand("SELECT last_insert_rowid();", connection);
                /*
                   Aqui pase investigando como agarraba el id del cliente que se acababa de agregar, es la unica forma que se me vino para poder obtener el id del cliente y asi relacionarlos con las cuentas que llegara a tener
@@ -88,17 +94,18 @@ namespace Versalink.Controllers.API
                if (filasAfectadas > 0)
                {  
                   /*
-                     de todos los incisos a realizar este fue el que mas me costo ya que no conocia la sintaxis, fue uno de los primeros que hice, la logica la tenia clara, solo era poder implementarla. Entonces lo que hice fue recorrer la lista de cuentas del cliente (si en caso se agregaron cuentas).
+                     de todos los incisos a realizar este fue el que mas me costo ya que no conocia la sintaxis, fue uno de los primeros que hice, la logica la tenia clara, solo era poder implementarla. Entonces lo que hice fue recorrer la lista de cuentas del cliente (si en caso se agregaron cuentas) y agregarlas relacionando cada cuenta con ese cliente.
                   */
                   if (cliente.cuentas != null && cliente.cuentas.Count > 0)
                {
                   foreach (var cuenta in cliente.cuentas)
                   {
-                     var queryCuenta = @"INSERT INTO Cuenta (numero_cuenta, saldo, ClienteId) 
-                              VALUES (@numero_cuenta, @saldo, @cliente_id)";
-                     //
-                     using var commandCuenta = new SqliteCommand(queryCuenta, connection);
-                     //
+                     using var commandCuenta = new SqliteCommand(queryRegistrarCuenta, connection);
+                     if(commandCuenta == null)
+                     {
+                        return BadRequest("ha ocurrido un error al crear el commandCuenta");
+                     }
+   
                      commandCuenta.Parameters.AddWithValue("@numero_cuenta", cuenta.numero_cuenta);
                      commandCuenta.Parameters.AddWithValue("@saldo", cuenta.saldo);
                      commandCuenta.Parameters.AddWithValue("@cliente_id", clienteID);
@@ -106,7 +113,6 @@ namespace Versalink.Controllers.API
                   }//
 
                }
-                  // Cliente agregado correctamente 
                   Console.WriteLine($"Cliente agregado con ID: {clienteID}");
                   return Ok(new { mensaje = "Cliente agregado correctamente." });
                }
@@ -122,6 +128,7 @@ namespace Versalink.Controllers.API
             }
             
         }
+        private readonly string queryObtenerSaldoPorNCuenta = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
         [HttpGet("saldo/{numeroCuenta}")]
          public async Task<IActionResult> ConsultarSaldo(int numeroCuenta)
          {
@@ -133,10 +140,13 @@ namespace Versalink.Controllers.API
             using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync();
 
-            var query = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
-            using var command = new SqliteCommand(query, connection);
-            command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
+            using var command = new SqliteCommand(queryObtenerSaldoPorNCuenta, connection);
+            if(command == null)
+            {
+               return BadRequest("ha ocurrido un error al crear el command de obtener el saldo");
+            }
 
+            command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
             var result = await command.ExecuteScalarAsync();
 
             if (result != null)

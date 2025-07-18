@@ -9,6 +9,12 @@ namespace Versalink.Controllers.API
    public class TransaccionController : ControllerBase
    {
       private readonly string _connectionString = "Data Source=database.db";
+      private readonly string queryObtenerSaldo = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
+      private readonly string queryRealizarTransaccion = @"
+         INSERT INTO Transaccion (fecha, monto, cuenta_id, numero_cuenta, tipo) 
+         VALUES (@fecha, @monto, (SELECT cuenta_id FROM Cuenta WHERE numero_cuenta = @numeroCuenta), @numeroCuenta, @tipo)";
+      
+      private readonly string queryActualizarSaldo = "UPDATE Cuenta SET saldo = @saldo WHERE numero_cuenta = @numeroCuenta";
       [HttpPost("transaccion")]
       public async Task<IActionResult> Transaccion([FromBody] Transaccion request)
       {
@@ -17,8 +23,7 @@ namespace Versalink.Controllers.API
             using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync();
 
-            var saldoQuery = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
-            using var saldoCmd = new SqliteCommand(saldoQuery, connection);
+            using var saldoCmd = new SqliteCommand(queryObtenerSaldo, connection);
             saldoCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
             var saldoResult = await saldoCmd.ExecuteScalarAsync();
 
@@ -55,8 +60,7 @@ namespace Versalink.Controllers.API
             /*
                bueno aqui solo hice una peticion a la bd para actualizar el saldo de una cuenta.
             */
-            var updateSaldoQuery = "UPDATE Cuenta SET saldo = @saldo WHERE numero_cuenta = @numeroCuenta";
-            using var updateSaldoCmd = new SqliteCommand(updateSaldoQuery, connection);
+            using var updateSaldoCmd = new SqliteCommand(queryActualizarSaldo, connection);
             updateSaldoCmd.Parameters.AddWithValue("@saldo", saldo_actual);
             updateSaldoCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
             await updateSaldoCmd.ExecuteNonQueryAsync();
@@ -65,9 +69,7 @@ namespace Versalink.Controllers.API
                una vez he actualizado el saldo de la cuenta, lo siguiente
                que hice fue registrar esa transaccion en la tabla Transaccion, para guardar cuando se hizo, cuanto se hizo y que tipo de transaccion fue
             */
-            var insertTransaccionQuery = @"INSERT INTO Transaccion (fecha, monto, cuenta_id, numero_cuenta, tipo) 
-               VALUES (@fecha, @monto, (SELECT cuenta_id FROM Cuenta WHERE numero_cuenta = @numeroCuenta), @numeroCuenta, @tipo)";
-            using var insertTransaccionCmd = new SqliteCommand(insertTransaccionQuery, connection);
+            using var insertTransaccionCmd = new SqliteCommand(queryRealizarTransaccion, connection);
             insertTransaccionCmd.Parameters.AddWithValue("@fecha", DateTime.Now);
             insertTransaccionCmd.Parameters.AddWithValue("@monto", request.monto);
             insertTransaccionCmd.Parameters.AddWithValue("@numeroCuenta", request.numero_cuenta);
@@ -83,6 +85,15 @@ namespace Versalink.Controllers.API
          }
       }
       
+       /*
+         para sacar el saldo final solo fui sumando los montos de las transacciones,
+         y de esa manera obtuve el saldo final, y tambien saque el **saldo despues**, este saldo despues es el saldo que tiene la cuenta despues de una transaccion
+      */
+      private readonly string queryReesumenTransaccion = @"
+         SELECT transaccion_id, fecha, monto, tipo 
+            FROM Transaccion 
+         WHERE numero_cuenta = @numeroCuenta 
+         ORDER BY fecha ASC";
       [HttpGet("transacciones/{numeroCuenta}")]
       public async Task<IActionResult> ResumenTransacciones(int numeroCuenta)
       {
@@ -93,17 +104,13 @@ namespace Versalink.Controllers.API
             /*
                creo que no hace falta explicar aqui, solo es una consulta a la base de datos donde obtengo las transacciones mediante un numero de cuenta
             */
-            var query = @"SELECT transaccion_id, fecha, monto, tipo 
-                           FROM Transaccion 
-                           WHERE numero_cuenta = @numeroCuenta 
-                           ORDER BY fecha ASC";
-            using var command = new SqliteCommand(query, connection);
+            using var command = new SqliteCommand(queryReesumenTransaccion, connection);
             command.Parameters.AddWithValue("@numeroCuenta", numeroCuenta);
 
             using var reader = await command.ExecuteReaderAsync();
 
             var transacciones = new List<object>();
-            decimal saldo = 0;
+            //decimal saldo = 0;
 
             var saldoInicialQuery = "SELECT saldo FROM Cuenta WHERE numero_cuenta = @numeroCuenta";
             using var saldoCmd = new SqliteCommand(saldoInicialQuery, connection);
@@ -123,10 +130,6 @@ namespace Versalink.Controllers.API
                      tipo = reader.GetString(reader.GetOrdinal("tipo"))
                   });
             }
-            /*
-               para sacar el saldo final solo fui sumando los montos de las transacciones,
-               y de esa manera obtuve el saldo final, y tambien saque el **saldo despues**, este es el saldo que tenia antes de realizar una transaccion nueva
-            */
             decimal saldoActual = 0;
             foreach (var t in transaccionesTemp)
             {

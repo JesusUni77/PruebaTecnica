@@ -11,23 +11,6 @@ Por otro lado no me dio tiempo de poder terminar la autenticacion de token que h
 hecho, al final me falto relacionar la tabla usuario con la de cliente, la configuracion de esto esta en el archivo ```appsettings.json ahi se encuentra la configuracion para la base de datos con sqlite y el email y clave al cual le agrego
 un token de autenticacion
 
-## Como ejecutar el proyecto
-
-1. Navegue con `cd` hasta la segunda carpeta Versalink
-2. Ejecute el siguiente comando para levantar la app
-
-``` bash
-dotnet run
-```
-luego ponga en el navegador la siguiente url
-==> http://localhost:5183/swagger/index.html
-
-# Nota
-=> le deje un archivo "loqueocupeendb.sql" ahi tengo las tablas que cree en el browser de sqlite
-
-## Buueno este fue el package que agregue al para usar sqlite
-[x] - dotnet add package Microsoft.EntityFrameworkCore.Sqlite
-
 # Ejemplos JSON para la API
 
 Este JSON es para agregar un cliente y sus cuentas(si acaso tiene)
@@ -46,7 +29,7 @@ Este JSON es para agregar un cliente y sus cuentas(si acaso tiene)
 }
 </pre>
 
-En este es el post para realizar una transaccion
+En este es el post para realizar una transaccion por "Deposito o Retiro"
 </pre>
 {
   "monto": 100,
@@ -55,14 +38,40 @@ En este es el post para realizar una transaccion
 }
 </pre>
 
-## #################### ME PASO ALGO CON LOS TEST ######################## ##
+## Como ejecutar el proyecto
 
-Estuve tratando de instalar XUnit, lo instale pero no me reconoce cuando lo importo.
+1. Navegue con `cd` hasta la segunda carpeta Versalink
+2. Ejecute el siguiente comando para levantar la app
 
-"Comandos que habia utilizado para instalar XUnit"
-[x] - dotnet add package xunit
+``` bash
+dotnet run
+```
+luego ponga en el navegador la siguiente url
+==> http://localhost:5183/swagger/index.html
+
+# Nota
+=> le deje un archivo "loqueocupeendb.sql" ahi tengo las tablas que cree en el browser de sqlite
+
+## Buueno este fue el package que agregue al para usar sqlite
+[x] - dotnet add package Microsoft.EntityFrameworkCore.Sqlite
+
+
+## #################### TEST XUnit ######################## ##
+Al instalar el Xunit tuve un problema con el sdk, tuve que crear un archivo global.json para indicarle la version directamente, y trabajara con la version 8.0.412 porque me estaba trabajando con la 9 no se porque si estaba usando el sdk 8
+
+Aqui baje .NET 8.0
+[x] - https://dotnet.microsoft.com/en-us/download
+
+[x] - dotnet new xunit -n tests
+
+en la carpeta tests del primer nivel del proyecto agregue en tests.csproj
+para referenciar mi proyecto
+<prev>
+   <ItemGroup>
+      <ProjectReference Include="../Versalink/Versalink.csproj" />
+   </ItemGroup>
+</prev>
+
+```Dentro de la carpeta tests meti estas dependencias
+[x] - dotnet add package xunit 
 [x] - dotnet add package xunit.runner.visualstudio
-[x] - dotnet add reference ..\..\Versalink\Versalink.csproj
-
-lo elimine porque no dejara correr el proyecto debido al error que me salia,
-ya he trabajado XUnit en la universidad, aunque en pruebas unitarias basicas.
