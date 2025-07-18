@@ -7,8 +7,9 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-//builder.Services.AddDbContext<Models.Context>(options =>
-    //options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Si tienes un contexto de Entity Framework, descomenta y ajusta la siguiente línea:
+// builder.Services.AddDbContext<Models.Context>(options =>
+//     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 
 builder.Services.AddControllers();
