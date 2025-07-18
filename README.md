@@ -75,3 +75,7 @@ para referenciar mi proyecto
 ```Dentro de la carpeta tests meti estas dependencias
 [x] - dotnet add package xunit 
 [x] - dotnet add package xunit.runner.visualstudio
+
+para correr los tests solo hay que entrar a la siguiente ruta
+==> Versalink/tests 
+y ejecutar el comando `dotnet test`
