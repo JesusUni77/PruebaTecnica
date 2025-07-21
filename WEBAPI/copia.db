@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS Clientes(
+	cliente_id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL,
+	data_birth DATETIME,
+	sexo TEXT NOT NULL,
+	ingresos DECIMAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Accounts (
+	account_id INTEGER PRIMARY KEY AUTOINCREMENT,
+	account_number TEXT NOT NULL,
+	saldo DECIMAL,
+	create_at DATETIME,
+	cliente_fk INTEGER NOT NULL,
+	FOREIGN KEY(cliente_fk) REFERENCES Clientes(cliente_id)
+);
+
+select *from Clientes
+select *from Accounts
+
+delete from Clientes
+where cliente_id=6
